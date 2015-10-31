@@ -18,24 +18,6 @@
 #define LED_GREEN_OFF	PORTD &= ~(1 << PD3)
 #define BUTTON		PINB & (1 << PINB2)
 
-void delay(uint16_t t){
-	for(uint16_t i = 0; i < t; i++){
-		_delay_ms(1);
-	}
-}
-
-void lock(void){
-	PORTB |= (1 << PB1);	// set relay PB1
-	delay(500);
-	PORTB &= ~(1 << PB1);	// unset relay PB1
-}
-
-void unlock(void){
-	PORTB |= (1 << PB0);	// set relay PB0
-	delay(500);
-	PORTB &= ~(1 << PB0);	// unset relay PB0
-}
-
 void init(void){
 	// deactivate clock divider -> 16 MHz
 	clock_prescale_set(clock_div_1);
@@ -76,10 +58,14 @@ int main(void) {
 			// closed
 			case 0:
 				// blink red led
-				if(led_clock > 100) LED_RED_OFF;
-				else LED_RED_ON;
-				if(led_clock > 0) led_clock--;
-				else led_clock = 1000;
+				if(led_clock > 100)
+					LED_RED_OFF;
+				else
+					LED_RED_ON;
+				if(led_clock > 0)
+					led_clock--;
+				else
+					led_clock = 1000;
 				
 				if(BUTTON){
 					state = 1;		// now opening
@@ -88,13 +74,12 @@ int main(void) {
 				}
 				break;
 				
-				
-				
 			// opening
 			case 1:	
 				LED_RED_OFF;
-				if(timer > 0) timer--;		// still waiting until opening has finished
-				else{
+				if(timer > 0)
+					timer--;		// still waiting until opening has finished
+				else {
 					PORTB &= ~(1 << PB0);	// stopping the open-relay
 					state = 2;		// now open
 					timer = 60000;		// open-state has to wait 60.000ms (1 min)
@@ -106,34 +91,42 @@ int main(void) {
 			//open
 			case 2:
 				// blink green led
-				if(led_clock > 500) LED_GREEN_OFF;
-				else LED_GREEN_ON;
-				if(led_clock > 0) led_clock--;
+				if(led_clock > 500)
+					LED_GREEN_OFF;
+				else
+					LED_GREEN_ON;
+				if(led_clock > 0)
+					led_clock--;
 				else led_clock = 1000;
 				
-				if(timer > 0) timer--;		// still waiting until we can lock the door
+				if(timer > 0)
+					timer--;		// still waiting until we can lock the door
 				else{
 					state = 3;		// now closing
 					PORTB |= (1 << PB1);	// triggering the close-relay
 					timer = 500;		// closing-state has to wait 500ms
 				}
-				if(BUTTON) timer = 60000;	// reset the timer
+				if(BUTTON)
+					timer = 60000;	// reset the timer
 				break;
-				
-				
 				
 			// closing
 			case 3:
 				LED_GREEN_OFF;
-				if(timer > 0) timer--;		// still waiting until opening has finished
+				if(timer > 0)
+					timer--;		// still waiting until closing has finished
 				else{
 					PORTB &= ~(1 << PB1);	// stopping the close-relay
 					state = 0;		// now closed
 				}
 				break;
-			
+
+			// debugging
+			default:
+				break;
+
 		}
-		delay(1);
+		_delay_ms(1);
 		
 	}
 	return 0;
