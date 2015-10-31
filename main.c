@@ -9,6 +9,8 @@
 // PB2 := button
 // PD2 := red LED
 // PD3 := green LED
+// to unlock: set PB0, unset PB1 (PB0 & /PB1)
+// to lock: set PB1, unset PB0 (PB1 & /PB0)
 
 int main(void) {
 	// deactivate internal clock divider
