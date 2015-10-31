@@ -3,10 +3,10 @@
 #include <avr/power.h>
 #include <avr/interrupt.h>
 
-// TODO PIN description needed
-// PB0 :=
-// PB1 :=
-// PB2 :=
+// default: active high
+// PB0 := relay 0
+// PB1 := relay 1
+// PB2 := button
 // PD2 := red LED
 // PD3 := green LED
 
@@ -29,13 +29,13 @@ int main(void) {
 	while(!(PINB & (1 << PINB2)))
 	{
 		PORTB |= (1 << PB0);
-			_delay_ms(1000);
-			PORTB &= ~(1 << PB0);
-			_delay_ms(1000);
+		_delay_ms(1000);
+		PORTB &= ~(1 << PB0);
+		_delay_ms(1000);
 		PORTB |= (1 << PB1);
-			_delay_ms(1000);
-			PORTB &= ~(1 << PB1);
-			_delay_ms(1000);
+		_delay_ms(1000);
+		PORTB &= ~(1 << PB1);
+		_delay_ms(1000);
 	}
 */
 
@@ -65,6 +65,8 @@ int main(void) {
 			{
 				// unset green LED
 				PORTD &= ~(1 << PD3);
+
+				// compute waiting time for green LED (off)
 				for(timer2 = 0; timer2 < 3 * timer + 100; timer2++)
 				{
 					_delay_ms(1);
@@ -74,6 +76,8 @@ int main(void) {
 				}
 				// set green LED
 				PORTD |= (1 << PD3);
+
+				// compute waiting time for green LED (on)
 				for(timer2 = 0; timer2 < timer + 100; timer2++)
 				{
 					_delay_ms(1);
@@ -102,6 +106,7 @@ int main(void) {
 		}
 		else
 		{
+			/* idle mode: red LED blinking */
 			_delay_ms(10);
 			timer++;
 			if(timer < 200)
