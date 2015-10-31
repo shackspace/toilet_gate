@@ -4,6 +4,11 @@
 #include <avr/interrupt.h>
 
 // TODO PIN description needed
+// PB0 :=
+// PB1 :=
+// PB2 :=
+// PD2 := red LED
+// PD3 := green LED
 
 int main() {
 	// internen clock teiler deaktivieren
@@ -34,20 +39,21 @@ int main() {
 */
 
 	while(1) {
-		if(PINB & (1 << PINB2))
+		if(PINB & (1 << PB2))
 		{
 			/* unlock door */
 
-			// set LED
+			// unset red LED
+			PORTD &= ~(1 << PD2);
+
+			// set green LED
 			PORTD |= (1 << PD3);
 
 			// set relay PB0
 			PORTB |= (1 << PB0);
 
-			// unset relay PD2
-			PORTD &= ~(1 << PD2);
-
 			_delay_ms(500);
+
 			// unset relay PB0
 			PORTB &= ~(1 << PB0);
 
@@ -56,7 +62,7 @@ int main() {
 			// wait for timeout
 			for(timer = 0; timer < 150; timer++)
 			{
-				// unset LED
+				// unset green LED
 				PORTD &= ~(1 << PD3);
 				for(timer2 = 0; timer2 < 3 * timer + 100; timer2++)
 				{
@@ -65,7 +71,7 @@ int main() {
 					if(PINB & (1 << PINB2))
 						timer = 0;
 				}
-				// set LED
+				// set green LED
 				PORTD |= (1 << PD3);
 				for(timer2 = 0; timer2 < timer + 100; timer2++)
 				{
@@ -99,12 +105,12 @@ int main() {
 			timer++;
 			if(timer < 200)
 			{
-				// unset relay PD2
+				// unset red LED
 				PORTD &= ~(1 << PD2);
 			}
 			else
 			{
-				// set relay PD2
+				// set red LED
 				PORTD |= (1 << PD2);
 			}
 		}
