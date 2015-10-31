@@ -11,7 +11,7 @@
 // PD3 := green LED
 
 int main() {
-	// internen clock teiler deaktivieren
+	// deactivate internal clock divider
 	clock_prescale_set(clock_div_1);
 	// set interrupts
 	sei();
