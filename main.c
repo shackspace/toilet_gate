@@ -10,7 +10,7 @@
 // PD2 := red LED
 // PD3 := green LED
 
-int main() {
+int main(void) {
 	// deactivate internal clock divider
 	clock_prescale_set(clock_div_1);
 	// set interrupts
