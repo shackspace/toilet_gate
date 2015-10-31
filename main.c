@@ -19,7 +19,8 @@ int main() {
 	unsigned char timer = 0;
 	unsigned short timer2 = 0;
 
-	// prepare registers
+	// prepare data direction registers
+	// set PB0, PB1, PD2, PD3 to output
 	DDRB |= (1 << PB0) | (1 << PB1);
 	DDRD |= (1 << PD2) | (1 << PD3);
 
