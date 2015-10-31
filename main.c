@@ -19,16 +19,17 @@
 // PB0 := relay 0
 // PB1 := relay 1
 // PB2 := button (active high)
-// PD2 := red LED
-// PD3 := green LED
+// PB7 := red LED
+// PD0 := green LED
 // PE2 := debug button (active low) (boot button on microcontroller pcb)
 // to unlock: set PB0, unset PB1 (PB0 & /PB1)
 // to lock: set PB1, unset PB0 (PB1 & /PB0)
 
-#define LED_RED_ON	PORTD |= (1 << PD2)
-#define LED_RED_OFF	PORTD &= ~(1 << PD2)
-#define LED_GREEN_ON	PORTD |= (1 << PD3)
-#define LED_GREEN_OFF	PORTD &= ~(1 << PD3)
+
+#define LED_RED_ON	PORTB |= (1 << PB7)
+#define LED_RED_OFF	PORTB &= ~(1 << PB7)
+#define LED_GREEN_ON	PORTD |= (1 << PD0)
+#define LED_GREEN_OFF	PORTD &= ~(1 << PD0)
 
 #define RELAY_OPEN_ON	PORTB |= (1 << PB0)
 #define RELAY_OPEN_OFF	PORTB &= ~(1 << PB0)
@@ -43,9 +44,9 @@ void init(void){
 	clock_prescale_set(clock_div_1);
 	
 	// prepare data direction registers
-	// set PB0, PB1, PD2, PD3 to output
-	DDRB |= (1 << PB0) | (1 << PB1);
-	DDRD |= (1 << PD2) | (1 << PD3);
+	// set PB0, PB1, PB2, PD0 to output
+	DDRB |= (1 << PB0) | (1 << PB1) | (1 << PB7);
+	DDRD |= (1 << PD0);
 }
 
 int main(void) {
