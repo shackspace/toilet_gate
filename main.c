@@ -12,20 +12,41 @@
 // to unlock: set PB0, unset PB1 (PB0 & /PB1)
 // to lock: set PB1, unset PB0 (PB1 & /PB0)
 
-int main(void) {
-	// deactivate internal clock divider
+#define LED_RED_ON	PORTD |= (1 << PD2)
+#define LED_RED_OFF	PORTD &= ~(1 << PD2)
+#define LED_GREEN_ON	PORTD |= (1 << PD3)
+#define LED_GREEN_OFF	PORTD &= ~(1 << PD3)
+#define BUTTON		PINB & (1 << PINB2)
+
+void delay(uint16_t t){
+	for(uint16_t i = 0; i < t; i++){
+		_delay_ms(1);
+	}
+}
+
+void lock(void){
+	PORTB |= (1 << PB1);	// set relay PB1
+	delay(500);
+	PORTB &= ~(1 << PB1);	// unset relay PB1
+}
+
+void unlock(void){
+	PORTB |= (1 << PB0);	// set relay PB0
+	delay(500);
+	PORTB &= ~(1 << PB0);	// unset relay PB0
+}
+
+void init(void){
+	// deactivate clock divider -> 16 MHz
 	clock_prescale_set(clock_div_1);
-	// set interrupts
-	sei();
-
-	unsigned char timer = 0;
-	unsigned short timer2 = 0;
-
+	
 	// prepare data direction registers
 	// set PB0, PB1, PD2, PD3 to output
 	DDRB |= (1 << PB0) | (1 << PB1);
 	DDRD |= (1 << PD2) | (1 << PD3);
+}
 
+void debug(void){	// TODO
 /*
 	// debugging: open and close with a frequency of 1Hz
 	while(!(PINB & (1 << PINB2)))
@@ -40,88 +61,80 @@ int main(void) {
 		_delay_ms(1000);
 	}
 */
+}
 
+
+int main(void) {
+	
+	// initialize the hardware
+	init();
+	uint8_t state = 0;
+	uint16_t timer = 0;
+	uint16_t led_clock = 0;
 	while(1) {
-		if(PINB & (1 << PB2))
-		{
-			/* unlock door */
-
-			// unset red LED
-			PORTD &= ~(1 << PD2);
-
-			// set green LED
-			PORTD |= (1 << PD3);
-
-			// set relay PB0
-			PORTB |= (1 << PB0);
-
-			_delay_ms(500);
-
-			// unset relay PB0
-			PORTB &= ~(1 << PB0);
-
-			//_delay_ms(500);
-
-			// wait for timeout
-			for(timer = 0; timer < 150; timer++)
-			{
-				// unset green LED
-				PORTD &= ~(1 << PD3);
-
-				// compute waiting time for green LED (off)
-				for(timer2 = 0; timer2 < 3 * timer + 100; timer2++)
-				{
-					_delay_ms(1);
-					// reset timer if button pushed
-					if(PINB & (1 << PINB2))
-						timer = 0;
+		switch(state){
+			// closed
+			case 0:
+				// blink red led
+				if(led_clock > 100) LED_RED_OFF;
+				else LED_RED_ON;
+				if(led_clock > 0) led_clock--;
+				else led_clock = 1000;
+				
+				if(BUTTON){
+					state = 1;		// now opening
+					PORTB |= (1 << PB0);	// triggering the open-relay
+					timer = 500;		// opening-state has to wait 500ms
 				}
-				// set green LED
-				PORTD |= (1 << PD3);
-
-				// compute waiting time for green LED (on)
-				for(timer2 = 0; timer2 < timer + 100; timer2++)
-				{
-					_delay_ms(1);
-					// reset timer if button pushed
-					if(PINB & (1 << PINB2))
-						timer = 0;
+				break;
+				
+				
+				
+			// opening
+			case 1:	
+				LED_RED_OFF;
+				if(timer > 0) timer--;		// still waiting until opening has finished
+				else{
+					PORTB &= ~(1 << PB0);	// stopping the open-relay
+					state = 2;		// now open
+					timer = 60000;		// open-state has to wait 60.000ms (1 min)
 				}
-			}
-
-			/* lock door */
-
-			// unset LED
-			PORTD &= ~(1 << PD3);
-
-			// set relay PD2
-			PORTD |= (1 << PD2);
-
-			// set relay PB1
-			PORTB |= (1 << PB1);
-			_delay_ms(500);
-
-			// unset relay PB1
-			PORTB &= ~(1 << PB1);
-			//_delay_ms(500);
-
+				break;
+				
+				
+				
+			//open
+			case 2:
+				// blink green led
+				if(led_clock > 500) LED_GREEN_OFF;
+				else LED_GREEN_ON;
+				if(led_clock > 0) led_clock--;
+				else led_clock = 1000;
+				
+				if(timer > 0) timer--;		// still waiting until we can lock the door
+				else{
+					state = 3;		// now closing
+					PORTB |= (1 << PB1);	// triggering the close-relay
+					timer = 500;		// closing-state has to wait 500ms
+				}
+				if(BUTTON) timer = 60000;	// reset the timer
+				break;
+				
+				
+				
+			// closing
+			case 3:
+				LED_GREEN_OFF;
+				if(timer > 0) timer--;		// still waiting until opening has finished
+				else{
+					PORTB &= ~(1 << PB1);	// stopping the close-relay
+					state = 0;		// now closed
+				}
+				break;
+			
 		}
-		else
-		{
-			/* idle mode: red LED blinking */
-			_delay_ms(10);
-			timer++;
-			if(timer < 200)
-			{
-				// unset red LED
-				PORTD &= ~(1 << PD2);
-			}
-			else
-			{
-				// set red LED
-				PORTD |= (1 << PD2);
-			}
-		}
+		delay(1);
+		
 	}
 	return 0;
 }
