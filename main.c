@@ -3,19 +3,19 @@
 #include <avr/power.h>
 #include <avr/interrupt.h>
 
-#define RELAY_TIME	500		// time in milliseconds the relays will be enabled
-					// max 65536
-					
-#define OPEN_TIME	60000		// time in milliseconds between button was pressed and we are locking the door
-					// max 4294967296
-					
-#define DEBUG_INTERVAL	2000		// time in milliseconds between door toggle in debug mode
-					// max 65536
-					
-#define DEBUG_THRESHOLD	5000		// time in milliseconds the boot/debug button must be held until we go into debug mode
+#define IN_RELAY_TIME		500	// time in milliseconds the relays will be enabled
 					// max 65536
 
-#define LED_MAX_LIGHT	255		// maximum brightness of the LEDs
+#define IN_OPEN_TIME		60000	// time in milliseconds between button was pressed and we are locking the door
+					// max 4294967296
+
+#define IN_DEBUG_INTERVAL	2000	// time in milliseconds between door toggle in debug mode
+					// max 65536
+
+#define IN_DEBUG_THRESHOLD	5000	// time in milliseconds the boot/debug button must be held until we go into debug mode
+					// max 65536
+
+#define LED_MAX_LIGHT		255	// maximum brightness of the LEDs
 					// max 255
 
 // default: active high
@@ -27,6 +27,13 @@
 // PE2 := debug button (active low) (boot button on microcontroller pcb)
 // to unlock: set PB0, unset PB1 (PB0 & /PB1)
 // to lock: set PB1, unset PB0 (PB1 & /PB0)
+
+#define LOOP_FACTOR		50			// speed of the main loop (runs this often per millisecond)
+#define LOOP_DELAY		1000 / LOOP_FACTOR	// delay in microseconds after each run of the loop
+#define RELAY_TIME		LOOP_FACTOR * IN_RELAY_TIME
+#define OPEN_TIME		LOOP_FACTOR * IN_OPEN_TIME
+#define DEBUG_INTERVAL		LOOP_FACTOR * IN_DEBUG_INTERVAL
+#define DEBUG_THRESHOLD		LOOP_FACTOR * IN_DEBUG_THRESHOLD
 
 #if LED_MAX_LIGHT > 255
 	#error LED_MAX_LIGHT must not be greater than 255
@@ -48,7 +55,8 @@
 #define BUTTON		(PINB & (1 << PB2))
 #define BUTTON_DEBUG	(PINE & (1 << PE2))
 
-uint8_t fade_time = 4;
+uint8_t fade_time = 4 * LOOP_FACTOR;		// 1 second
+uint16_t dead_time = 1000;
 
 void init(void){
 	// deactivate clock divider -> 16 MHz
@@ -95,7 +103,7 @@ void fade(volatile uint8_t *led){
 		
 		// prepare dead time
 		case 2:
-			time = 1000;		// set timeout for the dead time
+			time = dead_time * LOOP_FACTOR;		// set timeout for the dead time
 			state = 3;
 			break;
 		
@@ -208,7 +216,7 @@ int main(void) {
 				break;
 
 		}
-		_delay_us(1000);
+		_delay_us(LOOP_DELAY);
 		
 		if(BUTTON_DEBUG == 0){				// The boot/debug button is pressed
 			debug_counter++;			// count the time the button is pressed
