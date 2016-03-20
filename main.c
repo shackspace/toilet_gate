@@ -32,7 +32,7 @@
 #define LOOP_DELAY		1000 / LOOP_FACTOR	// delay in microseconds after each run of the loop
 #define RELAY_TIME		LOOP_FACTOR * IN_RELAY_TIME
 #define OPEN_TIME		LOOP_FACTOR * IN_OPEN_TIME
-#define DEBUG_INTERVAL		LOOP_FACTOR * IN_DEBUG_INTERVAL
+#define DEBUG_INTERVAL		IN_DEBUG_INTERVAL
 #define DEBUG_THRESHOLD		LOOP_FACTOR * IN_DEBUG_THRESHOLD
 
 #if LED_MAX_LIGHT > 255
@@ -198,20 +198,20 @@ int main(void) {
 				LED_RED_ON;				// signal that we are in debugging mode
 				while(1){
 					RELAY_OPEN_ON;			//
-					_delay_ms(RELAY_TIME);		//  unlock the door
+					_delay_ms(IN_RELAY_TIME);		//  unlock the door
 					RELAY_OPEN_OFF;			//
 					
 					LED_GREEN_ON;			// signal that the door is unlocked
 					
-					_delay_ms(DEBUG_INTERVAL);	// wait
+					_delay_ms(IN_DEBUG_INTERVAL);	// wait
 					
 					RELAY_CLOSE_ON;			//
-					_delay_ms(RELAY_TIME);		//  lock the door
+					_delay_ms(IN_RELAY_TIME);		//  lock the door
 					RELAY_CLOSE_OFF;		//
 					
 					LED_GREEN_OFF;			// signal that the door is locked
 					
-					_delay_ms(DEBUG_INTERVAL);	// wait
+					_delay_ms(IN_DEBUG_INTERVAL);	// wait
 				}
 				break;
 
