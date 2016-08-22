@@ -108,18 +108,22 @@ void disable_close(void){
 }
 
 void state_closed(void){
+	OCR0A = 0xff;
 	state = 0;
 }
 
 void state_opening(void){
+	OCR0A = 0;
 	state = 1;
 }
 
 void state_open(void){
+	OCR0B = 0xff;
 	state = 2;
 }
 
 void state_closing(void){
+	OCR0B = 0;
 	state = 3;
 }
 
@@ -151,20 +155,6 @@ void init(void){
 
 	DDRE |= (1<<PE6);
 	PORTE |= (1<<PE2);
-}
-
-uint8_t st = 0;
-
-void led_on(void){
-	PORTE |= (1<<PE6);
-}
-
-void led_off(void){
-	PORTE &= ~(1<<PE6);
-}
-
-void st_0(void){
-	st = 0;
 }
 
 int main(void){
