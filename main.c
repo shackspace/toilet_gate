@@ -2,17 +2,19 @@
 #include <util/delay.h>
 #include <avr/power.h>
 #include <avr/interrupt.h>
+#include <stdbool.h>
 
-#define IN_RELAY_TIME		500	// time in milliseconds the relays will be enabled
+#define RELAY_TIME		50		// time in milliseconds the relays will be enabled
+#define RELAY_SLEEP		50		// time in milliseconds between each activation of the relays
+#define RELAY_TICKS		5		// how often the relays should be activated
+						// max 5
+#define OPEN_TIME		60000	// time in milliseconds between button was pressed and we are locking the door
+
+
+#define DEBUG_INTERVAL	2000	// time in milliseconds between door toggles in debug mode
 					// max 65536
 
-#define IN_OPEN_TIME		60000	// time in milliseconds between button was pressed and we are locking the door
-					// max 4294967296
-
-#define IN_DEBUG_INTERVAL	2000	// time in milliseconds between door toggle in debug mode
-					// max 65536
-
-#define IN_DEBUG_THRESHOLD	5000	// time in milliseconds the boot/debug button must be held until we go into debug mode
+#define DEBUG_THRESHOLD	2000	// time in milliseconds the boot/debug button must be held until we go into debug mode
 					// max 65536
 
 #define LED_MAX_LIGHT		255	// maximum brightness of the LEDs
@@ -28,35 +30,98 @@
 // to unlock: set PB0, unset PB1 (PB0 & /PB1)
 // to lock: set PB1, unset PB0 (PB1 & /PB0)
 
-#define LOOP_FACTOR		50			// speed of the main loop (runs this often per millisecond)
-#define LOOP_DELAY		1000 / LOOP_FACTOR	// delay in microseconds after each run of the loop
-#define RELAY_TIME		LOOP_FACTOR * IN_RELAY_TIME
-#define OPEN_TIME		LOOP_FACTOR * IN_OPEN_TIME
-#define DEBUG_INTERVAL		IN_DEBUG_INTERVAL
-#define DEBUG_THRESHOLD		LOOP_FACTOR * IN_DEBUG_THRESHOLD
+#define MAX_TASK_COUNT RELAY_TICKS * 4 + 3 + 5	// theoretical minimum is RELAY_TICKS * 4 + 3
 
-#if LED_MAX_LIGHT > 255
-	#error LED_MAX_LIGHT must not be greater than 255
+#if RELAY_TICKS > 5
+#error RELAY_TICKS must not be higher than 5
 #endif
 
-#define LED_RED		OCR0A
-#define LED_GREEN	OCR0B
+uint64_t system_millis = 0;
 
-#define LED_RED_ON	OCR0A = 0xff
-#define LED_RED_OFF	OCR0A = 0
-#define LED_GREEN_ON	OCR0B = 0xff
-#define LED_GREEN_OFF	OCR0B = 0
+uint8_t state = 0;
 
-#define RELAY_OPEN_ON	PORTB |= (1 << PB0)
-#define RELAY_OPEN_OFF	PORTB &= ~(1 << PB0)
-#define RELAY_CLOSE_ON	PORTB |= (1 << PB1)
-#define RELAY_CLOSE_OFF	PORTB &= ~(1 << PB1)
+typedef void (*VoidFnct) (void);
 
-#define BUTTON		(PINB & (1 << PB2))
-#define BUTTON_DEBUG	(PINE & (1 << PE2))
+struct task{
+	VoidFnct action;
+	uint64_t time_to_run;
+	uint8_t info;
+	uint32_t repeat_time;
+};
 
-uint8_t fade_time = 4 * LOOP_FACTOR;		// 1 second
-uint16_t dead_time = 1000;
+struct task tasklist[MAX_TASK_COUNT];
+
+ISR(TIMER1_COMPA_vect){
+	system_millis++;
+}
+
+uint8_t register_task(VoidFnct funcp, uint32_t first_run_in, uint8_t repeat, uint32_t repeat_millis){
+	for(uint8_t i = 0; i < MAX_TASK_COUNT; i++){
+		if(tasklist[i].info == 0){
+			tasklist[i].action = funcp;
+			tasklist[i].time_to_run = system_millis + first_run_in;
+			tasklist[i].repeat_time = repeat_millis;
+			tasklist[i].info = 1;
+			if(repeat != 0){
+				tasklist[i].info |= 2;
+			}
+			return i;
+		}
+	}
+	return 0xff;
+}
+
+void deregister_task(uint8_t id){
+	tasklist[id].info = 0;
+}
+
+void run_tasks(void){
+	for(uint8_t i = 0; i < MAX_TASK_COUNT; i++){
+		if(tasklist[i].info != 0){
+			if(tasklist[i].time_to_run <= system_millis){
+				tasklist[i].action();
+				if(tasklist[i].info & 2){
+					tasklist[i].time_to_run += tasklist[i].repeat_time;
+				}
+				else{
+					tasklist[i].info = 0;
+				}
+			}
+		}
+	}
+}
+
+void enable_open(void){
+	PORTB |= (1<<PB0);
+}
+
+void disable_open(void){
+	PORTB &= ~(1<<PB0);
+}
+
+void enable_close(void){
+	PORTB |= (1<<PB1);
+}
+
+void disable_close(void){
+	PORTB &= ~(1<<PB1);
+}
+
+void state_closed(void){
+	state = 0;
+}
+
+void state_opening(void){
+	state = 1;
+}
+
+void state_open(void){
+	state = 2;
+}
+
+void state_closing(void){
+	state = 3;
+}
 
 void init(void){
 	// deactivate clock divider -> 16 MHz
@@ -68,166 +133,118 @@ void init(void){
 	DDRD |= (1 << PD0);
 	
 	// setup Timer0 for fast PWM
-//	TCCR0A |= (1 << COM0A1) | (1 << COM0B1) | (1 << WGM01) | (1 << WGM00);
 	TCCR0A |= (1 << COM0A1) | (1 << COM0B1) | (1 << WGM00);
 	TCCR0B |= (1 << CS00);
+
+	// setup Timer1A to trigger every millisecond
+	TCCR1B |= (1 << WGM12) | (1 << CS11) | (1 << CS10);
+	OCR1A = 250;
+	TIMSK1 |= (1 << OCIE1A);
+
+	// enable interrupts
+	sei();
+
+
+	for(int i = 0; i < MAX_TASK_COUNT; i++){
+		tasklist[i].info = 0;
+	}
+
+	DDRE |= (1<<PE6);
+	PORTE |= (1<<PE2);
 }
 
-void fade(volatile uint8_t *led){
-	static uint8_t state = 0;
-	static uint16_t time = 0;
-	switch(state){
-		//fading up
-		case 0:
-			if(time == 0){				// we have reached the timeout
-				(*led)++;			// increase brightness
-				time = fade_time;		// reset the timer
-				if((*led) == LED_MAX_LIGHT)	// we have reached the maximum brightness
-					state = 1;		// now fading down
-			}
-			else					// still waiting for timeout
-				time--;				// decrement timer
-			break;
-		
-		//fading down
-		case 1:
-			if(time == 0){			// we have reached the timeout
-				(*led)--;		// decrease brightness
-				time = fade_time;	// reset the timer
-				if((*led) == 0)		// LED is now off
-					state = 2;	// now prepare dead time
-			}
-			else				// still waiting for timeout
-				time--;			// decrement timer
-			break;
-		
-		// prepare dead time
-		case 2:
-			time = dead_time * LOOP_FACTOR;		// set timeout for the dead time
-			state = 3;
-			break;
-		
-		// dead time
-		case 3:
-			if(time == 0){			// we have reached the timeout
-				time = fade_time;	// prepare timeout for fading up
-				state = 0;		// now fading up
-			}
-			else				// still waiting for timeout
-				time--;			// decrement timer
-	}
+uint8_t st = 0;
+
+void led_on(void){
+	PORTE |= (1<<PE6);
 }
 
+void led_off(void){
+	PORTE &= ~(1<<PE6);
+}
 
-int main(void) {
-	init();			// initialize the hardware
-	uint8_t state = 2;	// we start in open state
+void st_0(void){
+	st = 0;
+}
 
-#if OPEN_TIME > 65536
-	uint32_t timer = 0;	// no time set, so we will immediately start with locking the door
-#else
-	uint16_t timer = 0;
-#endif
+int main(void){
+	init();
 
-	uint16_t led_clock = 0;
-	uint16_t debug_counter = 0;
-	while(1) {
-		switch(state){
-			// closed
-			case 0:
-				if(LED_GREEN > 0)		// green LED is still on
-					fade(&LED_GREEN);		// continue fading green LED until it is off
-				else
-					fade(&LED_RED);		// now we can fade red
-				
-				
-				if(BUTTON){
-					state = 1;		// now opening
-					RELAY_OPEN_ON;		// triggering the open-relay
-					timer = RELAY_TIME;	// opening-state has to wait
-				}
-				break;
-				
-			// opening
-			case 1:	
-				if(LED_RED > 0)			// red LED is still on
-					fade(&LED_RED);		// continue fading red LED
-				
-				if(timer > 0)
-					timer--;		// still waiting until opening has finished
-				else {
-					RELAY_OPEN_OFF;		// stopping the open-relay
-					state = 2;		// now open
-					timer = OPEN_TIME;	// open-state has to wait
-				}
-				break;
-				
-			//open
-			case 2:
-				if(LED_RED > 0)			// red LED is still on
-					fade(&LED_RED);		// continue fading red LED until it is off
-				else
-					fade(&LED_GREEN);		// now we can fade green
-				
-				if(timer > 0)
-					timer--;		// still waiting until we can lock the door
-				else{
-					state = 3;		// now closing
-					RELAY_CLOSE_ON;		// triggering the close-relay
-					timer = RELAY_TIME;	// closing-state has to wait
-				}
-				if(BUTTON)
-					timer = OPEN_TIME;	// reset the timer
-				break;
-				
-			// closing
-			case 3:
-				if(LED_GREEN > 0)		// green LED is still on
-					fade(&LED_GREEN);		// continue fading green LED
-				
-				if(timer > 0)
-					timer--;		// still waiting until closing has finished
-				else{
-					RELAY_CLOSE_OFF;	// stopping the close-relay
-					state = 0;		// now closed
-				}
-				break;
+	uint8_t closing_tasks[((RELAY_TICKS * 2) + 2)];
 
-			// debugging
-			default:
-				LED_RED_ON;				// signal that we are in debugging mode
-				while(1){
-					RELAY_OPEN_ON;			//
-					_delay_ms(IN_RELAY_TIME);		//  unlock the door
-					RELAY_OPEN_OFF;			//
-					
-					LED_GREEN_ON;			// signal that the door is unlocked
-					
-					_delay_ms(IN_DEBUG_INTERVAL);	// wait
-					
-					RELAY_CLOSE_ON;			//
-					_delay_ms(IN_RELAY_TIME);		//  lock the door
-					RELAY_CLOSE_OFF;		//
-					
-					LED_GREEN_OFF;			// signal that the door is locked
-					
-					_delay_ms(IN_DEBUG_INTERVAL);	// wait
-				}
-				break;
+	closing_tasks[0] = register_task(state_closing, 0, 0, 0);
+	for(uint8_t i = 0; i < RELAY_TICKS; i++){
+		closing_tasks[1 + i * 2] = register_task(enable_close, ((RELAY_TIME * i) + (RELAY_SLEEP * i)), 0, 0);
+		closing_tasks[2 + i * 2] = register_task(disable_close, ((RELAY_TIME * (i + 1))  + (RELAY_SLEEP * i)), 0, 0);
+	}
+	closing_tasks[3 + (RELAY_TICKS - 1) * 2] = register_task(state_closed, (RELAY_TIME * RELAY_TICKS), 0, 0);
 
-		}
-		_delay_us(LOOP_DELAY);
-		
-		if(BUTTON_DEBUG == 0){				// The boot/debug button is pressed
-			debug_counter++;			// count the time the button is pressed
-			if(debug_counter > DEBUG_THRESHOLD){	// we have reached the threshold
-				state = 100;			// we go to the debugging state
+	uint8_t open_requested = 0;
+
+	while(true){
+		run_tasks();
+		if((PINB & (1 << PB2)) || open_requested == 1){
+			switch (state){
+				case 0:	//closed
+					open_requested = 0;
+					state_opening();
+
+/*					register_task(enable_open, 0, 0, 0);
+					register_task(disable_open, 250, 0, 0);
+					register_task(enable_open, 500, 0, 0);
+					register_task(disable_open, 750, 0, 0);
+					register_task(state_open, 750, 0, 0);
+*/					
+					for(uint8_t i = 0; i < RELAY_TICKS; i++){
+						register_task(enable_open, ((RELAY_TIME * i) + (RELAY_SLEEP * i)), 0, 0);
+						register_task(disable_open, ((RELAY_TIME * (i + 1))  + (RELAY_SLEEP * i)), 0, 0);
+					}
+					register_task(state_open, (RELAY_TIME * RELAY_TICKS), 0, 0);
+
+/*					closing_tasks[0] = register_task(state_closing, 60000, 0, 0);
+					closing_tasks[1] = register_task(enable_close, 60000, 0, 0);
+					closing_tasks[2] = register_task(disable_close, 60250, 0, 0);
+					closing_tasks[3] = register_task(enable_close, 60500, 0, 0);
+					closing_tasks[4] = register_task(disable_close, 60750, 0, 0);
+					closing_tasks[5] = register_task(state_closed, 60750, 0, 0);
+*/
+					closing_tasks[0] = register_task(state_closing, OPEN_TIME, 0, 0);
+					for(uint8_t i = 0; i < RELAY_TICKS; i++){
+						closing_tasks[1 + i * 2] = register_task(enable_close, ((RELAY_TIME * i) + (RELAY_SLEEP * i) + OPEN_TIME), 0, 0);
+						closing_tasks[2 + i * 2] = register_task(disable_close, ((RELAY_TIME * (i + 1))  + (RELAY_SLEEP * i) + OPEN_TIME), 0, 0);
+					}
+					closing_tasks[3 + (RELAY_TICKS - 1) * 2] = register_task(state_closed, ((RELAY_TIME * RELAY_TICKS) + OPEN_TIME), 0, 0);
+
+					break;
+
+				case 1:	// opening
+					// do nothing, we are already opening
+					break;
+
+				case 2:	// open
+					for(uint8_t i = 0; i < ((RELAY_TICKS * 2) + 2); i++){
+						deregister_task(closing_tasks[i]);
+					}
+
+/*					closing_tasks[0] = register_task(state_closing, 60000, 0, 0);
+					closing_tasks[1] = register_task(enable_close, 60000, 0, 0);
+					closing_tasks[2] = register_task(disable_close, 60250, 0, 0);
+					closing_tasks[3] = register_task(enable_close, 60500, 0, 0);
+					closing_tasks[4] = register_task(disable_close, 60750, 0, 0);
+					closing_tasks[5] = register_task(state_closed, 60750, 0, 0);
+*/
+					closing_tasks[0] = register_task(state_closing, OPEN_TIME, 0, 0);
+					for(uint8_t i = 0; i < RELAY_TICKS; i++){
+						closing_tasks[1 + i * 2] = register_task(enable_close, ((RELAY_TIME * i) + (RELAY_SLEEP * i) + OPEN_TIME), 0, 0);
+						closing_tasks[2 + i * 2] = register_task(disable_close, ((RELAY_TIME * (i + 1))  + (RELAY_SLEEP * i) + OPEN_TIME), 0, 0);
+					}
+					closing_tasks[3 + (RELAY_TICKS - 1) * 2] = register_task(state_closed, ((RELAY_TIME * RELAY_TICKS) + OPEN_TIME), 0, 0);					
+					break;
+
+				case 3:	// closing
+					open_requested = 1;
+					break;
 			}
 		}
-		else if (debug_counter > 0){			// The boot/debug button is not pressed, but the counter is not zero
-			debug_counter--;			// so we decrement the counter. If we would reset it, we could get problems with bouncing.
-		}
-		
 	}
-	return 0;
 }
