@@ -4,9 +4,10 @@
 #include <avr/interrupt.h>
 #include <stdbool.h>
 
-#define RELAY_TIME		50		// time in milliseconds the relays will be enabled
-#define RELAY_SLEEP		50		// time in milliseconds between each activation of the relays
-#define RELAY_TICKS		5		// how often the relays should be activated
+#define RELAY_TIME			200		// time in milliseconds the relays will be enabled
+#define RELAY_SLEEP			200		// time in milliseconds between each activation of the relays
+#define RELAY_TICKS_OPEN	5		// how often the relays should be activated
+#define RELAY_TICKS_CLOSE	1		// how often the relays should be activated
 						// max 5
 #define OPEN_TIME		60000	// time in milliseconds between button was pressed and we are locking the door
 
@@ -30,10 +31,14 @@
 // to unlock: set PB0, unset PB1 (PB0 & /PB1)
 // to lock: set PB1, unset PB0 (PB1 & /PB0)
 
-#define MAX_TASK_COUNT RELAY_TICKS * 4 + 3 + 5	// theoretical minimum is RELAY_TICKS * 4 + 3
+#define MAX_TASK_COUNT RELAY_TICKS_OPEN * 2 + RELAY_TICKS_CLOSE * 2 + 3 + 5	// theoretical minimum is RELAY_TICKS * 4 + 3
 
-#if RELAY_TICKS > 5
-#error RELAY_TICKS must not be higher than 5
+#if RELAY_TICKS_OPEN > 5
+#error RELAY_TICKS_OPEN must not be higher than 5
+#endif
+
+#if RELAY_TICKS_CLOSE > 5
+#error RELAY_TICKS_CLOSE must not be higher than 5
 #endif
 
 uint64_t system_millis = 0;
@@ -160,14 +165,14 @@ void init(void){
 int main(void){
 	init();
 
-	uint8_t closing_tasks[((RELAY_TICKS * 2) + 2)];
+	uint8_t closing_tasks[((RELAY_TICKS_CLOSE * 2) + 2)];
 
 	closing_tasks[0] = register_task(state_closing, 0, 0, 0);
-	for(uint8_t i = 0; i < RELAY_TICKS; i++){
+	for(uint8_t i = 0; i < RELAY_TICKS_CLOSE; i++){
 		closing_tasks[1 + i * 2] = register_task(enable_close, ((RELAY_TIME * i) + (RELAY_SLEEP * i)), 0, 0);
 		closing_tasks[2 + i * 2] = register_task(disable_close, ((RELAY_TIME * (i + 1))  + (RELAY_SLEEP * i)), 0, 0);
 	}
-	closing_tasks[3 + (RELAY_TICKS - 1) * 2] = register_task(state_closed, (RELAY_TIME * RELAY_TICKS), 0, 0);
+	closing_tasks[3 + (RELAY_TICKS_CLOSE - 1) * 2] = register_task(state_closed, (RELAY_TIME * RELAY_TICKS_CLOSE), 0, 0);
 
 	uint8_t open_requested = 0;
 
@@ -178,32 +183,18 @@ int main(void){
 				case 0:	//closed
 					open_requested = 0;
 					state_opening();
-
-/*					register_task(enable_open, 0, 0, 0);
-					register_task(disable_open, 250, 0, 0);
-					register_task(enable_open, 500, 0, 0);
-					register_task(disable_open, 750, 0, 0);
-					register_task(state_open, 750, 0, 0);
-*/					
-					for(uint8_t i = 0; i < RELAY_TICKS; i++){
+					for(uint8_t i = 0; i < RELAY_TICKS_OPEN; i++){
 						register_task(enable_open, ((RELAY_TIME * i) + (RELAY_SLEEP * i)), 0, 0);
 						register_task(disable_open, ((RELAY_TIME * (i + 1))  + (RELAY_SLEEP * i)), 0, 0);
 					}
-					register_task(state_open, (RELAY_TIME * RELAY_TICKS), 0, 0);
+					register_task(state_open, (RELAY_TIME * RELAY_TICKS_OPEN), 0, 0);
 
-/*					closing_tasks[0] = register_task(state_closing, 60000, 0, 0);
-					closing_tasks[1] = register_task(enable_close, 60000, 0, 0);
-					closing_tasks[2] = register_task(disable_close, 60250, 0, 0);
-					closing_tasks[3] = register_task(enable_close, 60500, 0, 0);
-					closing_tasks[4] = register_task(disable_close, 60750, 0, 0);
-					closing_tasks[5] = register_task(state_closed, 60750, 0, 0);
-*/
 					closing_tasks[0] = register_task(state_closing, OPEN_TIME, 0, 0);
-					for(uint8_t i = 0; i < RELAY_TICKS; i++){
+					for(uint8_t i = 0; i < RELAY_TICKS_CLOSE; i++){
 						closing_tasks[1 + i * 2] = register_task(enable_close, ((RELAY_TIME * i) + (RELAY_SLEEP * i) + OPEN_TIME), 0, 0);
 						closing_tasks[2 + i * 2] = register_task(disable_close, ((RELAY_TIME * (i + 1))  + (RELAY_SLEEP * i) + OPEN_TIME), 0, 0);
 					}
-					closing_tasks[3 + (RELAY_TICKS - 1) * 2] = register_task(state_closed, ((RELAY_TIME * RELAY_TICKS) + OPEN_TIME), 0, 0);
+					closing_tasks[3 + (RELAY_TICKS_CLOSE - 1) * 2] = register_task(state_closed, ((RELAY_TIME * RELAY_TICKS_CLOSE) + OPEN_TIME), 0, 0);
 
 					break;
 
@@ -212,23 +203,16 @@ int main(void){
 					break;
 
 				case 2:	// open
-					for(uint8_t i = 0; i < ((RELAY_TICKS * 2) + 2); i++){
+					for(uint8_t i = 0; i < ((RELAY_TICKS_CLOSE * 2) + 2); i++){
 						deregister_task(closing_tasks[i]);
 					}
 
-/*					closing_tasks[0] = register_task(state_closing, 60000, 0, 0);
-					closing_tasks[1] = register_task(enable_close, 60000, 0, 0);
-					closing_tasks[2] = register_task(disable_close, 60250, 0, 0);
-					closing_tasks[3] = register_task(enable_close, 60500, 0, 0);
-					closing_tasks[4] = register_task(disable_close, 60750, 0, 0);
-					closing_tasks[5] = register_task(state_closed, 60750, 0, 0);
-*/
 					closing_tasks[0] = register_task(state_closing, OPEN_TIME, 0, 0);
-					for(uint8_t i = 0; i < RELAY_TICKS; i++){
+					for(uint8_t i = 0; i < RELAY_TICKS_CLOSE; i++){
 						closing_tasks[1 + i * 2] = register_task(enable_close, ((RELAY_TIME * i) + (RELAY_SLEEP * i) + OPEN_TIME), 0, 0);
 						closing_tasks[2 + i * 2] = register_task(disable_close, ((RELAY_TIME * (i + 1))  + (RELAY_SLEEP * i) + OPEN_TIME), 0, 0);
 					}
-					closing_tasks[3 + (RELAY_TICKS - 1) * 2] = register_task(state_closed, ((RELAY_TIME * RELAY_TICKS) + OPEN_TIME), 0, 0);					
+					closing_tasks[3 + (RELAY_TICKS_CLOSE - 1) * 2] = register_task(state_closed, ((RELAY_TIME * RELAY_TICKS_CLOSE) + OPEN_TIME), 0, 0);					
 					break;
 
 				case 3:	// closing
