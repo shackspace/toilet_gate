@@ -4,8 +4,8 @@
 #include <avr/interrupt.h>
 #include <stdbool.h>
 
-#define RELAY_TIME			200		// time in milliseconds the relays will be enabled
-#define RELAY_SLEEP			200		// time in milliseconds between each activation of the relays
+#define RELAY_TIME			50		// time in milliseconds the relays will be enabled
+#define RELAY_SLEEP			50		// time in milliseconds between each activation of the relays
 #define RELAY_TICKS_OPEN	5		// how often the relays should be activated
 #define RELAY_TICKS_CLOSE	1		// how often the relays should be activated
 						// max 5
