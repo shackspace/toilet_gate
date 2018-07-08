@@ -4,12 +4,12 @@
 #include <avr/interrupt.h>
 #include <stdbool.h>
 
-#define RELAY_TIME			50		// time in milliseconds the relays will be enabled
+#define RELAY_TIME			19999		// time in milliseconds the relays will be enabled
 #define RELAY_SLEEP			50		// time in milliseconds between each activation of the relays
-#define RELAY_TICKS_OPEN	5		// how often the relays should be activated
-#define RELAY_TICKS_CLOSE	1		// how often the relays should be activated
+#define RELAY_TICKS_OPEN	1		// how often the relays should be activated
+#define RELAY_TICKS_CLOSE	0		// how often the relays should be activated
 						// max 5
-#define OPEN_TIME		60000	// time in milliseconds between button was pressed and we are locking the door
+#define OPEN_TIME		20000	// time in milliseconds between button was pressed and we are locking the door
 
 
 #define DEBUG_INTERVAL	2000	// time in milliseconds between door toggles in debug mode
